@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *
+ * NOTE: Modified by Scott Wolfe and Courtney Pettiford
+ *       9/1/2018
  */
 
 package com.google.firebase.quickstart.auth;
@@ -30,6 +34,8 @@ import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class EmailPasswordActivity extends BaseActivity implements
         View.OnClickListener {
@@ -40,6 +46,11 @@ public class EmailPasswordActivity extends BaseActivity implements
     private TextView mDetailTextView;
     private EditText mEmailField;
     private EditText mPasswordField;
+    private TextView mStoredWordsTextView;
+    private EditText mWordInputField;
+
+    FirebaseFirestore db;
+    private String mStoredWords = "";
 
     // [START declare_auth]
     private FirebaseAuth mAuth;
@@ -55,12 +66,17 @@ public class EmailPasswordActivity extends BaseActivity implements
         mDetailTextView = findViewById(R.id.detail);
         mEmailField = findViewById(R.id.field_email);
         mPasswordField = findViewById(R.id.field_password);
+        mStoredWordsTextView = findViewById(R.id.stored_words);
+        mWordInputField = findViewById(R.id.word_input);
 
         // Buttons
         findViewById(R.id.email_sign_in_button).setOnClickListener(this);
         findViewById(R.id.email_create_account_button).setOnClickListener(this);
         findViewById(R.id.sign_out_button).setOnClickListener(this);
         findViewById(R.id.verify_email_button).setOnClickListener(this);
+        findViewById(R.id.uploadButton).setOnClickListener(this);
+
+        db = FirebaseFirestore.getInstance();
 
         // [START initialize_auth]
         mAuth = FirebaseAuth.getInstance();
@@ -71,9 +87,7 @@ public class EmailPasswordActivity extends BaseActivity implements
     @Override
     public void onStart() {
         super.onStart();
-        // Check if user is signed in (non-null) and update UI accordingly.
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        updateUI(currentUser);
+        updateUI();
     }
     // [END on_start_check_user]
 
@@ -93,14 +107,13 @@ public class EmailPasswordActivity extends BaseActivity implements
                         if (task.isSuccessful()) {
                             // Sign in success, update UI with the signed-in user's information
                             Log.d(TAG, "createUserWithEmail:success");
-                            FirebaseUser user = mAuth.getCurrentUser();
-                            updateUI(user);
+                            updateUI();
                         } else {
                             // If sign in fails, display a message to the user.
                             Log.w(TAG, "createUserWithEmail:failure", task.getException());
                             Toast.makeText(EmailPasswordActivity.this, "Authentication failed.",
                                     Toast.LENGTH_SHORT).show();
-                            updateUI(null);
+                            updateUI();
                         }
 
                         // [START_EXCLUDE]
@@ -127,14 +140,13 @@ public class EmailPasswordActivity extends BaseActivity implements
                         if (task.isSuccessful()) {
                             // Sign in success, update UI with the signed-in user's information
                             Log.d(TAG, "signInWithEmail:success");
-                            FirebaseUser user = mAuth.getCurrentUser();
-                            updateUI(user);
+                            updateUI();
                         } else {
                             // If sign in fails, display a message to the user.
                             Log.w(TAG, "signInWithEmail:failure", task.getException());
                             Toast.makeText(EmailPasswordActivity.this, "Authentication failed.",
                                     Toast.LENGTH_SHORT).show();
-                            updateUI(null);
+                            updateUI();
                         }
 
                         // [START_EXCLUDE]
@@ -150,7 +162,7 @@ public class EmailPasswordActivity extends BaseActivity implements
 
     private void signOut() {
         mAuth.signOut();
-        updateUI(null);
+        updateUI();
     }
 
     private void sendEmailVerification() {
@@ -206,16 +218,25 @@ public class EmailPasswordActivity extends BaseActivity implements
         return valid;
     }
 
-    private void updateUI(FirebaseUser user) {
+    private void updateUI() {
+        FirebaseUser user = mAuth.getCurrentUser();
+
         hideProgressDialog();
         if (user != null) {
             mStatusTextView.setText(getString(R.string.emailpassword_status_fmt,
                     user.getEmail(), user.isEmailVerified()));
             mDetailTextView.setText(getString(R.string.firebase_status_fmt, user.getUid()));
+            mStoredWordsTextView.setText(mStoredWords);
 
             findViewById(R.id.email_password_buttons).setVisibility(View.GONE);
             findViewById(R.id.email_password_fields).setVisibility(View.GONE);
             findViewById(R.id.signed_in_buttons).setVisibility(View.VISIBLE);
+            findViewById(R.id.word_input).setVisibility(View.VISIBLE);
+            findViewById(R.id.uploadButton).setVisibility(View.VISIBLE);
+            findViewById(R.id.stored_words).setVisibility(View.VISIBLE);
+            findViewById(R.id.stored_words_label).setVisibility(View.VISIBLE);
+
+            refreshStoredWords();
 
             findViewById(R.id.verify_email_button).setEnabled(!user.isEmailVerified());
         } else {
@@ -225,6 +246,67 @@ public class EmailPasswordActivity extends BaseActivity implements
             findViewById(R.id.email_password_buttons).setVisibility(View.VISIBLE);
             findViewById(R.id.email_password_fields).setVisibility(View.VISIBLE);
             findViewById(R.id.signed_in_buttons).setVisibility(View.GONE);
+            findViewById(R.id.word_input).setVisibility(View.GONE);
+            findViewById(R.id.uploadButton).setVisibility(View.GONE);
+            findViewById(R.id.stored_words).setVisibility(View.GONE);
+            findViewById(R.id.stored_words_label).setVisibility(View.GONE);
+        }
+    }
+
+    private void uploadWord() {
+        FirebaseUser user = mAuth.getCurrentUser();
+        if (user == null) {
+            return;
+        }
+
+        String newWord = mWordInputField.getText().toString();
+        if (!newWord.isEmpty()) {
+            mStoredWords = mStoredWords + "; " + newWord;
+            db.collection("users")
+                    .document(user.getEmail())
+                    .update("stored_words", mStoredWords)
+                    .addOnCompleteListener(new OnCompleteListener<Void>() {
+
+                        @Override
+                        public void onComplete(@NonNull Task<Void> task) {
+                            if (task.isSuccessful()) {
+                                Log.d(TAG, "uploaded: " + newWord);
+                            }
+                            else {
+                                Log.d(TAG, "failed to upload: " + newWord);
+                            }
+                        }
+                    }
+            );
+        }
+    }
+
+    private void refreshStoredWords() {
+        FirebaseUser user = mAuth.getCurrentUser();
+        if (user != null) {
+            String email = user.getEmail();
+            db.collection("users").document(email)
+                    .get()
+                    .addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
+
+                @Override
+                public void onComplete(@NonNull Task<DocumentSnapshot> task) {
+                    if (task.isSuccessful()) {
+                        DocumentSnapshot document = task.getResult();
+                        if (document.exists()) {
+                            Log.d(TAG, "DocumentSnapshot data: " + document.getData());
+                            String retrievedStoredWords = (String) document.get("stored_words");
+                            mStoredWords = retrievedStoredWords;
+                            mStoredWordsTextView.setText(mStoredWords);
+                        } else {
+                            Log.d(TAG, "No such document");
+                        }
+                    } else {
+                        Log.d(TAG, "get failed with ", task.getException());
+                    }
+                }
+
+            });
         }
     }
 
@@ -239,6 +321,9 @@ public class EmailPasswordActivity extends BaseActivity implements
             signOut();
         } else if (i == R.id.verify_email_button) {
             sendEmailVerification();
+        } else if (i == R.id.uploadButton) {
+            uploadWord();
+            updateUI();
         }
     }
 }
