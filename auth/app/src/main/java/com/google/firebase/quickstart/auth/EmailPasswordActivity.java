@@ -328,6 +328,8 @@ public class EmailPasswordActivity extends BaseActivity implements
         }
     }
 
+    // Used following tutorial https://www.tutorialspoint.com/android/android_text_to_speech.htm
+    // to implement text-to-speech functionality
     private void textToSpeech() {
         textToSpeech = new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
             @Override
