@@ -25,6 +25,7 @@ import android.support.annotation.NonNull;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -37,6 +38,11 @@ import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
+import android.speech.tts.TextToSpeech;
+
+import java.util.Locale;
+
+
 public class EmailPasswordActivity extends BaseActivity implements
         View.OnClickListener {
 
@@ -48,6 +54,10 @@ public class EmailPasswordActivity extends BaseActivity implements
     private EditText mPasswordField;
     private TextView mStoredWordsTextView;
     private EditText mWordInputField;
+
+
+    private Button textToSpeechButton;
+    private TextToSpeech textToSpeech;
 
     FirebaseFirestore db;
     private String mStoredWords = "";
@@ -76,11 +86,17 @@ public class EmailPasswordActivity extends BaseActivity implements
         findViewById(R.id.verify_email_button).setOnClickListener(this);
         findViewById(R.id.uploadButton).setOnClickListener(this);
 
+        textToSpeechButton = findViewById(R.id.textToSpeechButton);
+
+
         db = FirebaseFirestore.getInstance();
 
         // [START initialize_auth]
         mAuth = FirebaseAuth.getInstance();
         // [END initialize_auth]
+
+
+        textToSpeech();
     }
 
     // [START on_start_check_user]
@@ -235,6 +251,7 @@ public class EmailPasswordActivity extends BaseActivity implements
             findViewById(R.id.uploadButton).setVisibility(View.VISIBLE);
             findViewById(R.id.stored_words).setVisibility(View.VISIBLE);
             findViewById(R.id.stored_words_label).setVisibility(View.VISIBLE);
+            findViewById(R.id.textToSpeechButton).setVisibility(View.VISIBLE);
 
             refreshStoredWords();
 
@@ -250,6 +267,7 @@ public class EmailPasswordActivity extends BaseActivity implements
             findViewById(R.id.uploadButton).setVisibility(View.GONE);
             findViewById(R.id.stored_words).setVisibility(View.GONE);
             findViewById(R.id.stored_words_label).setVisibility(View.GONE);
+            findViewById(R.id.textToSpeechButton).setVisibility(View.GONE);
         }
     }
 
@@ -308,6 +326,25 @@ public class EmailPasswordActivity extends BaseActivity implements
 
             });
         }
+    }
+
+    private void textToSpeech() {
+        textToSpeech = new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int i) {
+                if (i != TextToSpeech.ERROR) {
+                    textToSpeech.setLanguage(Locale.ENGLISH);
+                }
+            }
+        });
+
+        textToSpeechButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String toSpeak = mStoredWordsTextView.getText().toString();
+                textToSpeech.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+            }
+        });
     }
 
     @Override
