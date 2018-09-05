@@ -37,10 +37,13 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.SetOptions;
 
 import android.speech.tts.TextToSpeech;
 
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 
 public class EmailPasswordActivity extends BaseActivity implements
@@ -178,6 +181,7 @@ public class EmailPasswordActivity extends BaseActivity implements
 
     private void signOut() {
         mAuth.signOut();
+        mStoredWords = "";
         updateUI();
     }
 
@@ -272,60 +276,85 @@ public class EmailPasswordActivity extends BaseActivity implements
     }
 
     private void uploadWord() {
+
+        // get current user
         FirebaseUser user = mAuth.getCurrentUser();
         if (user == null) {
             return;
         }
 
+        // get word to be added to list (stored as one concatenated string)
         String newWord = mWordInputField.getText().toString();
-        if (!newWord.isEmpty()) {
-            mStoredWords = mStoredWords + "; " + newWord;
-            db.collection("users")
-                    .document(user.getEmail())
-                    .update("stored_words", mStoredWords)
-                    .addOnCompleteListener(new OnCompleteListener<Void>() {
-
-                        @Override
-                        public void onComplete(@NonNull Task<Void> task) {
-                            if (task.isSuccessful()) {
-                                Log.d(TAG, "uploaded: " + newWord);
-                            }
-                            else {
-                                Log.d(TAG, "failed to upload: " + newWord);
-                            }
-                        }
-                    }
-            );
+        if (newWord.isEmpty()) {
+            return;
         }
+        if (mStoredWords.isEmpty()) {
+            mStoredWords = newWord;
+        }
+        else {
+            mStoredWords = mStoredWords + "; " + newWord;
+        }
+
+        // write new word list to server and update UI
+        Map<String, Object> data = new HashMap<>();
+        data.put("stored_words", mStoredWords);
+        db.collection("users")
+                .document(user.getEmail())
+                .set(data, SetOptions.merge())
+                .addOnCompleteListener(
+                        new OnCompleteListener<Void>() {
+
+                            @Override
+                            public void onComplete(@NonNull Task<Void> task) {
+                                if (task.isSuccessful()) {
+                                    Log.d(TAG, "uploaded: " + newWord);
+                                    updateUI();
+                                }
+                                else {
+                                    Log.d(TAG, "failed to upload: " + newWord);
+                                }
+                            }
+
+                        }
+                );
     }
 
     private void refreshStoredWords() {
+
+        // get user
         FirebaseUser user = mAuth.getCurrentUser();
-        if (user != null) {
-            String email = user.getEmail();
-            db.collection("users").document(email)
-                    .get()
-                    .addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
-
-                @Override
-                public void onComplete(@NonNull Task<DocumentSnapshot> task) {
-                    if (task.isSuccessful()) {
-                        DocumentSnapshot document = task.getResult();
-                        if (document.exists()) {
-                            Log.d(TAG, "DocumentSnapshot data: " + document.getData());
-                            String retrievedStoredWords = (String) document.get("stored_words");
-                            mStoredWords = retrievedStoredWords;
-                            mStoredWordsTextView.setText(mStoredWords);
-                        } else {
-                            Log.d(TAG, "No such document");
-                        }
-                    } else {
-                        Log.d(TAG, "get failed with ", task.getException());
-                    }
-                }
-
-            });
+        if (user == null) {
+            return;
         }
+
+        // get user's stored words and put them in the text box
+        String email = user.getEmail();
+        db.collection("users")
+                .document(email)
+                .get()
+                .addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
+
+                    @Override
+                    public void onComplete(@NonNull Task<DocumentSnapshot> task) {
+                        if (task.isSuccessful()) {
+                            DocumentSnapshot document = task.getResult();
+                            if (document.exists()) {
+                                Log.d(TAG, "DocumentSnapshot data: " + document.getData());
+                                String retrievedStoredWords = (String) document.get("stored_words");
+                                if (retrievedStoredWords != null && !retrievedStoredWords.isEmpty()) {
+                                    mStoredWords = retrievedStoredWords;
+                                    mStoredWordsTextView.setText(mStoredWords);
+                                }
+                            } else {
+                                Log.d(TAG, "No such document");
+                            }
+                        } else {
+                            Log.d(TAG, "get failed with ", task.getException());
+                        }
+                    }
+
+                });
+
     }
 
     // Used following tutorial https://www.tutorialspoint.com/android/android_text_to_speech.htm
@@ -362,7 +391,6 @@ public class EmailPasswordActivity extends BaseActivity implements
             sendEmailVerification();
         } else if (i == R.id.uploadButton) {
             uploadWord();
-            updateUI();
         }
     }
 }
